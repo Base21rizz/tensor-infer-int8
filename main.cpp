@@ -57,7 +57,7 @@ public:
             }
             
             flat_index += idx[current_axis] * stride;
-            stride += shape_[current_axis];
+            stride *= shape_[current_axis];
             // Fix the overflow later
         }
         return data_[flat_index];
@@ -68,6 +68,69 @@ private:
     std::vector<double> data_;
 
 };
+
+[[nodiscard]] Tensor matmul(const Tensor& a, const Tensor& b) {
+    // For our MNIST engine, we only care about 2D matrices
+    if(a.rank() != 2 || b.rank() != 2) {
+        throw std::invalid_argument("Matmul requires 2D tensors");
+    }
+
+    std::size_t left_rows = a.shape()[0]; // Rows of A
+    std::size_t left_cols = a.shape()[1]; // Cols of A
+    std::size_t right_rows = b.shape()[0]; // Rows of B
+    std::size_t right_cols = b.shape()[1]; // Cols of B
+
+    if(left_cols != right_rows) {
+        throw std::invalid_argument("Inner dimensions must match for matrix multiplication");
+    }
+    
+    // Prepare the output flat vector with zeros
+    std::vector<double> result_data(left_rows * right_cols, 0.0);
+    // We already know how the result will be at the end so we can just prepare it 
+    std::vector<std::size_t> result_shape{left_rows, right_cols};
+
+    // The core mathematical engine (this is where INT8 logic will be implemented later)
+    for (std::size_t i = 0; i < left_rows; ++i) {
+        for (std::size_t j = 0; j < right_cols; ++j) {
+            double sum = 0.0;
+
+            // grabbing the raw arrays before the n^3 loop for maximum speed
+            const auto& a_data = a.data();
+            const auto& b_data = b.data();
+            for (std::size_t k = 0; k < left_cols; ++k) {
+                // A's row elements * B's column elements
+                // Fast way
+                sum += a_data[i * left_cols + k] * b_data[k * right_cols + j];
+                // Works but slower because having to run to at function millions of times so we can skip it directly
+                // sum += a.at({i, k}) * b.at({k, j}); 
+            }
+            result_data[i * right_cols + j] = sum;
+        }
+    }
+
+    // Return a new Tensor with shape {M, N}
+    return Tensor (
+      std::move(result_shape),
+      std::move(result_data)
+    );
+}
+
+[[nodiscard]] Tensor add(const Tensor& a, const Tensor& b) {
+    if(a.shape() != b.shape()) {
+        throw std::invalid_argument("Shapes must match for addition");
+    }
+    
+    std::vector<double> result_data(a.numel());
+    const auto& a_data = a.data();
+    const auto& b_data = b.data();
+    
+    for(std::size_t i = 0; i < a.numel(); ++i) {
+        result_data[i] = a_data[i] + b_data[i];
+    }
+    
+    return Tensor(a.shape(), std::move(result_data));
+}
+
 
 int main(){
 
@@ -156,6 +219,79 @@ int main(){
         test_9_threw = true;
     }
     assert(test_9_threw);
+
+
+
+    std::cout << "Test 10: Matrix Multiplication\n";
+    
+    // Matrix A: 2x2
+    // [1, 2]
+    // [3, 4]
+    Tensor A({2, 2}, {1, 2, 3, 4});
+
+    // Matrix B: 2x2
+    // [2, 0]
+    // [1, 2]
+    Tensor B({2, 2}, {2, 0, 1, 2});
+
+    // Expected Result C:
+    // [ (1*2 + 2*1), (1*0 + 2*2) ] = [ 4, 4 ]
+    // [ (3*2 + 4*1), (3*0 + 4*2) ] = [10, 8 ]
+    
+    Tensor C = matmul(A, B);
+    
+    assert(C.data()[0] == 4);
+    assert(C.data()[1] == 4);
+    assert(C.data()[2] == 10);
+    assert(C.data()[3] == 8);
+    assert(C.shape()[0] == 2 && C.shape()[1] == 2);
+    
+    std::cout << "Matmul Success!\n";
+
+
+
+    std::cout << "Test 11: Element-wise Addition\n";
+    // Matrix A: 2x2
+    // [1, 2]
+    // [3, 4]
+    Tensor add_A({2, 2}, {1, 2, 3, 4});
+    // Matrix B (Bias): 2x2
+    // [10, 20]
+    // [30, 40]
+    Tensor add_B({2, 2}, {10, 20, 30, 40});
+    // Expected Result C:
+    // [1+10,  2+20] = [11, 22]
+    // [3+30,  4+40] = [33, 44]
+    
+    Tensor add_C = add(add_A, add_B);
+    assert(add_C.data()[0] == 11);
+    assert(add_C.data()[1] == 22);
+    assert(add_C.data()[2] == 33);
+    assert(add_C.data()[3] == 44);
+    assert(add_C.shape()[0] == 2 && add_C.shape()[1] == 2);
+    std::cout << "Addition Success!\n";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
