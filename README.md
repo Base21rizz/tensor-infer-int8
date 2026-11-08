@@ -1,1 +1,2 @@
 # tensor-infer-int8
+This repository tracks the development of a custom C++ inference engine built from first principles. It starts with foundational tensor math and will eventually implement and benchmark INT8 quantization against standard FP32 floating-point performance.
