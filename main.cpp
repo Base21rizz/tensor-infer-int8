@@ -223,29 +223,24 @@ int main(){
 
 
     std::cout << "Test 10: Matrix Multiplication\n";
-    
     // Matrix A: 2x2
     // [1, 2]
     // [3, 4]
     Tensor A({2, 2}, {1, 2, 3, 4});
-
     // Matrix B: 2x2
     // [2, 0]
     // [1, 2]
     Tensor B({2, 2}, {2, 0, 1, 2});
-
     // Expected Result C:
     // [ (1*2 + 2*1), (1*0 + 2*2) ] = [ 4, 4 ]
     // [ (3*2 + 4*1), (3*0 + 4*2) ] = [10, 8 ]
-    
     Tensor C = matmul(A, B);
-    
+
     assert(C.data()[0] == 4);
     assert(C.data()[1] == 4);
     assert(C.data()[2] == 10);
     assert(C.data()[3] == 8);
     assert(C.shape()[0] == 2 && C.shape()[1] == 2);
-    
     std::cout << "Matmul Success!\n";
 
 
