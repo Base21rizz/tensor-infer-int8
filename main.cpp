@@ -3,7 +3,9 @@
 #include <vector>
 #include <iostream>
 #include <cassert>
-class Tensor{
+#include <cmath>
+
+class Tensor{  // The actual tensor
 public:
     Tensor(
         std::vector<std::size_t> shape,
@@ -129,6 +131,45 @@ private:
     }
     
     return Tensor(a.shape(), std::move(result_data));
+}
+
+[[nodiscard]] Tensor relu(const Tensor& t) {
+    // relu function that keeps the positive value and makes all the negative value to be turned into 0
+    std::vector<double> result_data(t.numel());
+    const auto& t_data = t.data();
+    
+    for (std::size_t i = 0; i < t.numel(); ++i) {
+        // If greater than 0, keep it. Otherwise, clamp to 0.
+        result_data[i] = t_data[i] > 0.0 ? t_data[i] : 0.0;
+    }
+    
+    return Tensor(t.shape(), std::move(result_data));
+}
+
+[[nodiscard]] Tensor sigmoid(const Tensor& t) {
+    // Sometimes we want more control over output range thats where sigmoid function comes it makes the result more 
+    // smooth in between 0 to 1, extremely negative tends to be toward zero and extremely positive tends to be toward 1
+    std::vector<double> result_data(t.numel());
+    const auto& t_data = t.data();
+    
+    for (std::size_t i = 0; i < t.numel(); ++i) {
+        result_data[i] = 1.0 / (1.0 + std::exp(-t_data[i]));
+    }
+    
+    return Tensor(t.shape(), std::move(result_data));
+}
+
+[[nodiscard]] Tensor tanh(const Tensor& t) {
+    // Sometimes we want to have -1 to +1 range as the output range like for example how in case of stearing wheel
+    // we'll need -1 to represent wheel at the maximum left and +1 represent the maximum right and 0 being straigt ahead
+    // thats where tanh or the hyperbole of tangent is used for
+    std::vector<double> result_data(t.numel());
+    const auto& t_data = t.data();
+
+    for (std::size_t i = 0; i < t.numel(); ++i) {
+        result_data[i] = std::tanh(t_data[i]);
+    }
+    return Tensor(t.shape(), std::move(result_data));   
 }
 
 
@@ -266,28 +307,37 @@ int main(){
     assert(add_C.shape()[0] == 2 && add_C.shape()[1] == 2);
     std::cout << "Addition Success!\n";
 
+    // Relu test
+    std::cout << "Test 12: ReLU Activation\n";
+    // Matrix: 2x2 with negative and positive numbers
+    Tensor relu_in({2, 2}, {-1.5, 2.0, -0.01, 5.5});
+    
+    Tensor relu_out = relu(relu_in); 
+    assert(relu_out.data()[0] == 0.0);
+    assert(relu_out.data()[1] == 2.0);
+    assert(relu_out.data()[2] == 0.0);
+    assert(relu_out.data()[3] == 5.5); 
+    std::cout << "ReLU Success!\n";
+
+
+    // Sigmoid test
+    std::cout << "Test 13: Sigmoid Activation\n";
+    Tensor sig_in({2}, {0.0, 20.0});
+    Tensor sig_out = sigmoid(sig_in);
+    assert(sig_out.data()[0] == 0.5);
+    assert(sig_out.data()[1] > 0.999);
+    std::cout << "Sigmoid Success!\n";
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    // Tanh test
+    std::cout << "Test 14: Tanh Activation\n";
+    Tensor tanh_in({3}, {0.0, 10.0, -10.0});
+    Tensor tanh_out = tanh(tanh_in);
+    assert(tanh_out.data()[0] == 0.0);
+    assert(tanh_out.data()[1] > 0.999);
+    assert(tanh_out.data()[2] < -0.999);
+    std::cout << "Tanh Success!\n";
 
 
     // without nodiscard just calling t.shape() which is practically useless so we need a warning when we write something like this which is done by nodiscard.
