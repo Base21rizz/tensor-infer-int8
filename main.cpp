@@ -172,6 +172,26 @@ private:
     return Tensor(t.shape(), std::move(result_data));   
 }
 
+[[nodiscard]] std::size_t argmax(const Tensor& t){
+    // The purpose of this function is to boil of probabilities down to a single final answer (the winning index)
+    if(t.numel() == 0){
+        throw std::invalid_argument("cannot find argmax of an empty tensor");
+    }
+    const auto& t_data = t.data();
+    std::size_t max_idx = 0;
+    double max_val = t_data[0];
+
+    // loop through the flat array to find the highest value's position
+    for (std::size_t i = 1; i < t.numel(); ++i)
+    {
+        if(t_data[i] > max_val) {
+            max_val = t_data[i];
+            max_idx = i;
+        }
+    }
+    return max_idx;
+}
+
 
 int main(){
 
@@ -338,6 +358,16 @@ int main(){
     assert(tanh_out.data()[1] > 0.999);
     assert(tanh_out.data()[2] < -0.999);
     std::cout << "Tanh Success!\n";
+
+
+    // argmax test
+    std::cout << "Test 15: Argmax\n";
+    // Simulating network output for 10 digits (0-9)
+    // The highest confidence is 9.5 at indext 7
+    Tensor logits({10}, {0.1, 0.0, 0.05, 0.8, 0.1, 0.0, 0.0, 9.5, 0.2, 0.0});
+    std::size_t predicted_digit = argmax(logits);
+    assert(predicted_digit == 7);
+    std::cout << "Argmax Success!\n";
 
 
     // without nodiscard just calling t.shape() which is practically useless so we need a warning when we write something like this which is done by nodiscard.
