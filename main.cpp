@@ -2,9 +2,10 @@
 #include <stdexcept>
 #include <vector>
 #include <iostream>
-#include <cassert>
 #include <cmath>
-
+#include <fstream>
+#include <string>
+#include <cassert>
 class Tensor{  // The actual tensor
 public:
     Tensor(
@@ -192,6 +193,40 @@ private:
     return max_idx;
 }
 
+void save_tensor(const Tensor& t, const std::string& filepath) {
+    std::ofstream file(filepath, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file for writing: " + filepath);
+    }
+    
+    // Write the raw bytes of the vector directly to the hard drive
+    file.write(reinterpret_cast<const char*>(t.data().data()), t.numel() * sizeof(double));
+}
+
+[[nodiscard]] Tensor load_tensor(const std::string& filepath, std::vector<std::size_t> shape) {
+    // 1. Calculate how many numbers we expect based on the requested shape
+    std::size_t expected_elements = 1;
+    for (const std::size_t dim : shape) {
+        expected_elements *= dim;
+    }
+
+    // 2. Open the file in raw binary mode
+    std::ifstream file(filepath, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file: " + filepath);
+    }
+
+    // 3. Pre-allocate the exact amount of memory needed
+    std::vector<double> data(expected_elements);
+
+    // 4. Dump the binary data straight from the hard drive into RAM
+    if (!file.read(reinterpret_cast<char*>(data.data()), expected_elements * sizeof(double))) {
+        throw std::runtime_error("Failed to read the correct amount of data from: " + filepath);
+    }
+
+    return Tensor(std::move(shape), std::move(data));
+}
+
 
 int main(){
 
@@ -368,6 +403,23 @@ int main(){
     std::size_t predicted_digit = argmax(logits);
     assert(predicted_digit == 7);
     std::cout << "Argmax Success!\n";
+
+
+    // Load tensor test
+    std::cout << "Test 16: Binary File I/O\n";
+    // 1. Create a tensor with specific test values
+    Tensor io_original({2, 3}, {1.1, 2.2, 3.3, 4.4, 5.5, 6.6});
+    std::string test_filepath = "dummy_weights.bin";
+    // 2. Save it to disk
+    save_tensor(io_original, test_filepath);
+    // 3. Load it back from disk into a brand new tensor
+    Tensor io_loaded = load_tensor(test_filepath, {2, 3});
+    // 4. Verify the data matches exactly
+    assert(io_loaded.shape()[0] == 2 && io_loaded.shape()[1] == 3);
+    assert(io_loaded.data()[0] == 1.1);
+    assert(io_loaded.data()[2] == 3.3);
+    assert(io_loaded.data()[5] == 6.6);
+    std::cout << "File I/O Success!\n";
 
 
     // without nodiscard just calling t.shape() which is practically useless so we need a warning when we write something like this which is done by nodiscard.
