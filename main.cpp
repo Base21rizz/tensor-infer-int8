@@ -1,4 +1,6 @@
 #include <cstddef>
+#include <cstdint>
+#include <algorithm>
 #include <stdexcept>
 #include <vector>
 #include <iostream>
@@ -228,6 +230,52 @@ void save_tensor(const Tensor& t, const std::string& filepath) {
 }
 
 
+struct QuantizedTensor {
+    std::vector<std::size_t> shape;
+    std::vector<int8_t> data;
+    double scale;
+    int32_t zero_point;
+};
+
+[[nodiscard]] QuantizedTensor quantize(const Tensor& t) {
+    const auto& fp_data = t.data();
+    
+    // 1. Find the minimum and maximum values in the float tensor
+    auto [min_it, max_it] = std::minmax_element(fp_data.begin(), fp_data.end());
+    // Ensure 0.0 is always included in our range so zero is accurately represented
+    double min_val = std::min(*min_it, 0.0);
+    double max_val = std::max(*max_it, 0.0);
+
+    // 2. Define the INT8 hardware limits (-128 to 127)
+    const double q_min = -128.0;
+    const double q_max = 127.0;
+
+    // 3. Calculate Scale and Zero-Point
+    double scale = (max_val - min_val) / (q_max - q_min);
+    if (scale == 0.0) {
+        scale = 1.0; // Prevent division by zero if all numbers in the tensor are identical
+    }
+
+    int32_t zero_point = static_cast<int32_t>(std::round(q_min - (min_val / scale)));
+    zero_point = std::clamp(zero_point, -128, 127);
+
+    // 4. Compress every 64-bit double into an 8-bit integer
+    std::vector<int8_t> q_data(t.numel());
+    for (std::size_t i = 0; i < t.numel(); ++i) {
+        int32_t quantized_val = static_cast<int32_t>(std::round(fp_data[i] / scale)) + zero_point;
+        // Clamp ensures we never overflow the 8-bit boundaries
+        q_data[i] = static_cast<int8_t>(std::clamp(quantized_val, -128, 127));
+    }
+
+    return QuantizedTensor{
+        t.shape(),
+        std::move(q_data),
+        scale,
+        zero_point
+    };
+}
+
+
 int main(){
 
     std::vector<std::size_t> shape_1 {2,3};
@@ -420,6 +468,25 @@ int main(){
     assert(io_loaded.data()[2] == 3.3);
     assert(io_loaded.data()[5] == 6.6);
     std::cout << "File I/O Success!\n";
+
+
+    // Qunatization to INT8 test
+    std::cout << "Test 17: INT8 Quantization\n";
+    
+    // Create a float tensor with negative, zero, and positive values
+    Tensor fp_tensor({4}, {-10.0, 0.0, 5.0, 10.0});
+    
+    QuantizedTensor q_tensor = quantize(fp_tensor);
+    
+    // Minimum value (-10.0) should map to the bottom of INT8 (-128)
+    assert(q_tensor.data[0] == -128);
+    // 0.0 should map exactly to our calculated zero_point
+    assert(q_tensor.data[1] == q_tensor.zero_point);
+    // Maximum value (10.0) should map to the top of INT8 (127)
+    assert(q_tensor.data[3] == 127);
+    
+    std::cout << "Quantization Success! (Scale: " << q_tensor.scale 
+              << ", Zero-Point: " << q_tensor.zero_point << ")\n";
 
 
     // without nodiscard just calling t.shape() which is practically useless so we need a warning when we write something like this which is done by nodiscard.
