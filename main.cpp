@@ -276,6 +276,38 @@ struct QuantizedTensor {
 }
 
 
+[[nodiscard]] Tensor matmul_int8(const QuantizedTensor& A, const QuantizedTensor& B) {
+    if (A.shape.size() != 2 || B.shape.size() != 2) {
+        throw std::invalid_argument("matmul_int8 requires 2D tensors");
+    }
+    if (A.shape[1] != B.shape[0]) {
+        throw std::invalid_argument("Incompatible dimensions for matmul_int8");
+    }
+
+    std::size_t M = A.shape[0];
+    std::size_t K = A.shape[1];
+    std::size_t N = B.shape[1];
+
+    std::vector<double> result_data(M * N);
+    double combined_scale = A.scale * B.scale;
+
+    for (std::size_t i = 0; i < M; ++i) {
+        for (std::size_t j = 0; j < N; ++j) {
+            int32_t acc = 0; // 32-bit accumulator prevents 8-bit overflow
+            for (std::size_t k = 0; k < K; ++k) {
+                int32_t a_val = static_cast<int32_t>(A.data[i * K + k]) - A.zero_point;
+                int32_t b_val = static_cast<int32_t>(B.data[k * N + j]) - B.zero_point;
+                acc += a_val * b_val;
+            }
+            // Convert the accumulated integer result back to real scale
+            result_data[i * N + j] = static_cast<double>(acc) * combined_scale;
+        }
+    }
+
+    return Tensor({M, N}, std::move(result_data));
+}
+
+
 int main(){
 
     std::vector<std::size_t> shape_1 {2,3};
@@ -487,6 +519,29 @@ int main(){
     
     std::cout << "Quantization Success! (Scale: " << q_tensor.scale 
               << ", Zero-Point: " << q_tensor.zero_point << ")\n";
+
+
+    // INT8 matrix multiplication test
+    std::cout << "Test 18: INT8 Matrix Multiplication\n";
+    
+    Tensor fp_A({2, 2}, {1.0, 2.0, 3.0, 4.0});
+    Tensor fp_B({2, 2}, {5.0, 6.0, 7.0, 8.0});
+    
+    // Exact FP64 result: [19.0, 22.0, 43.0, 50.0]
+    Tensor exact_out = matmul(fp_A, fp_B);
+    
+    // Quantize both inputs and run INT8 matmul
+    QuantizedTensor q_A = quantize(fp_A);
+    QuantizedTensor q_B = quantize(fp_B);
+    Tensor approx_out = matmul_int8(q_A, q_B);
+    
+    // Verify the INT8 approximation is very close to the exact FP64 math
+    for (std::size_t i = 0; i < exact_out.numel(); ++i) {
+        assert(std::abs(exact_out.data()[i] - approx_out.data()[i]) < 0.5);
+    }
+    
+    std::cout << "INT8 Matmul Success! (Exact[0]: " << exact_out.data()[0] 
+              << " vs INT8[0]: " << approx_out.data()[0] << ")\n";
 
 
     // without nodiscard just calling t.shape() which is practically useless so we need a warning when we write something like this which is done by nodiscard.
