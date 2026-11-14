@@ -1,4 +1,4 @@
-![Benchmark Result](benchmark_result.png)
+![Benchmark Result](Benchmark_result.png)
 
 # tensor-infer-int8
 
@@ -27,7 +27,7 @@ The project was built incrementally over a week, validated by 21 unit and integr
 2. **Matrix Multiplication & Bias Broadcasting (Nov 9):** Implemented 2D `matmul` and element-wise `add` with a direct broadcasting workaround to add `1xN` bias vectors across `MxN` layer outputs without allocating duplicate rows.
 3. **Activations, Argmax & Raw Binary I/O (Nov 13):** Added `relu`, `sigmoid`, and `tanh` activations, `argmax` to pull the winning class index from output logits, and `load_tensor` / `save_tensor` to read raw IEEE-754 bytes directly into memory without text-parsing overhead.
 4. **Linear INT8 Quantization (Nov 15):** Implemented asymmetric quantization mapping `double` distributions into `int8_t` (`[-128, 127]`) by computing a floating-point `scale` and an integer `zero_point`:
-   $$q = \text{clamp}\left(\text{round}\left(\frac{x}{\text{scale}}\right) + \text{zero\_point}, -128, 127\right)$$
+   $$q = \text{clamp}\left(\text{round}\left(\frac{x}{\text{scale}}\right) + \text{zero-point}, -128, 127\right)$$
 5. **INT8 Matmul with 32-Bit Accumulation (Nov 15):** Multiplying two `int8_t` values immediately overflows an 8-bit register. `matmul_int8` subtracts the zero-points, accumulates products inside a 32-bit integer (`int32_t`), and rescales the final dot product back to `double` using `A.scale * B.scale` so bias addition and ReLU work seamlessly.
 6. **End-to-End Forward Pass & Benchmarking (Nov 15):** Chained the operations into `forward_pass`, wrote `export_mnist.py` to train and transpose PyTorch weights (`[out, in]` $\rightarrow$ `[in, out]`), verified live digit prediction (Test 20), and benchmarked 1,000 images against an unquantized FP64 baseline (Test 21).
 
