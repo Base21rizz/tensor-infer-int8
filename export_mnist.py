@@ -1,0 +1,62 @@
+# This script trains a 2-layer neural network(782 -> 128 -> 10) on MNIST for 1 epoch
+# transposes the weight matrices to match my c++ (input x weight) layout and exports the 
+# weight, biases, and a single test image as raw 64-bit float .bin files.
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+import numpy as np
+
+# 1. Define the exact 2-layer architecture matching C++ forward_pass
+class SimpleMLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(784, 128)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(128, 10)
+
+    def forward(self, x):
+        x = x.view(-1, 784)
+        x = self.relu(self.fc1(x))
+        return self.fc2(x)
+
+# 2. Load MNIST dataset
+transform = transforms.ToTensor()
+train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+
+# 3. Quick training (1 epoch is enough for ~95% accuracy)
+model = SimpleMLP()
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+print("Training MNIST model...")
+model.train()
+for images, labels in train_loader:
+    optimizer.zero_grad()
+    output = model(images)
+    loss = criterion(output, labels)
+    loss.backward()
+    optimizer.step()
+
+# 4. Export weights and biases as raw FP64 (C++ double) binary files
+# Note: PyTorch stores weights as [out, in], so we transpose (.T) to [in, out] for our C++ matmul
+model.eval()
+model.fc1.weight.detach().numpy().T.astype(np.float64).tofile("w1.bin")
+model.fc1.bias.detach().numpy().astype(np.float64).tofile("b1.bin")
+model.fc2.weight.detach().numpy().T.astype(np.float64).tofile("w2.bin")
+model.fc2.bias.detach().numpy().astype(np.float64).tofile("b2.bin")
+
+# 5. Export one test image and print the target label
+test_img, test_label = test_dataset[0] # Usually the digit '7'
+test_img_flat = test_img.view(1, 784).numpy().astype(np.float64)
+test_img_flat.tofile("test_img.bin")
+
+with torch.no_grad():
+    pt_pred = model(test_img).argmax(dim=1).item()
+
+print(f"Export complete! Generated: w1.bin, b1.bin, w2.bin, b2.bin, test_img.bin")
+print(f"Ground Truth Digit: {test_label} | PyTorch Prediction: {pt_pred}")

@@ -315,14 +315,14 @@ struct QuantizedTensor {
 {
     // Layer 1: Input -> Hidden Layer
     QuantizedTensor q_input = quantize(input);
-    Tensor hidden = matmul_int8(q_input, q_W1);
-    hidden = add(hidden, b1); // add bias 1
-    hidden = relu(hidden); // call relu
+    Tensor hidden = matmul_int8(q_input, q_W1); // multiply by layer1 weights
+    hidden = add(hidden, b1); // add layer 1 bias
+    hidden = relu(hidden); // call relu to zero out the negatives
 
     // Layer 2: Hidden Layer -> Output Logits
     QuantizedTensor q_hidden = quantize(hidden);
-    Tensor logits = matmul_int8(q_hidden, q_W2);
-    logits = add(logits, b2); // add bias 2
+    Tensor logits = matmul_int8(q_hidden, q_W2); // multiply by layer2 weight
+    logits = add(logits, b2); // add layer 2 bias
 
     // Return the index of the highest score
     return argmax(logits);
@@ -565,6 +565,7 @@ int main(){
               << " vs INT8[0]: " << approx_out.data()[0] << ")\n";
 
 
+
     // Forward pass test
     std::cout << "Test 19: Full INT8 Forward Pass\n";
     
@@ -598,6 +599,29 @@ int main(){
     assert(prediction == 1);
     std::cout << "Forward Pass Success! Predicted Class: " << prediction << "\n";
     
+
+    // Live MNIST inference test
+    std::cout << "Test 20: Live MNIST INT8 Inference\n";
+    
+    // 1. Load the exported PyTorch weights, biases, and test image
+    Tensor mnist_img = load_tensor("test_img.bin", {1, 784});
+    Tensor mnist_w1  = load_tensor("w1.bin", {784, 128});
+    Tensor mnist_b1  = load_tensor("b1.bin", {1, 128});
+    Tensor mnist_w2  = load_tensor("w2.bin", {128, 10});
+    Tensor mnist_b2  = load_tensor("b2.bin", {1, 10});
+    
+    // 2. Quantize the 64-bit weights down to 8-bit integers
+    QuantizedTensor q_mnist_w1 = quantize(mnist_w1);
+    QuantizedTensor q_mnist_w2 = quantize(mnist_w2);
+    
+    // 3. Run the full INT8 forward pass
+    std::size_t mnist_pred = forward_pass(mnist_img, q_mnist_w1, mnist_b1, q_mnist_w2, mnist_b2);
+    
+    std::cout << "C++ INT8 Engine Prediction: " << mnist_pred << " (Expected: 7)\n";
+    assert(mnist_pred == 7);
+    std::cout << "MNIST Inference Success!\n";
+
+
 
     // without nodiscard just calling t.shape() which is practically useless so we need a warning when we write something like this which is done by nodiscard.
     auto& shape = t.shape();
