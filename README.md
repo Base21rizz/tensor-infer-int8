@@ -2,22 +2,33 @@
 
 # tensor-infer-int8
 
-A dependency-free C++23 neural network inference engine built from scratch to explore how 8-bit integer (`INT8`) quantization works under the hood. 
+A dependency-free C++23 neural network inference engine built from scratch to explore how 8-bit integer (`INT8`) quantization works under the hood.
 
 Instead of relying on external math libraries like Eigen or BLAS, all tensor memory management, matrix operations, activation functions, binary serialization, and quantization routines are written in standard C++. Python (PyTorch) is only used offline to train a baseline MNIST model and dump the raw weights as `.bin` files.
 
 ## 1,000-Image MNIST Benchmark (`-O3`)
 
-Architecture: `784 -> 128 (ReLU) -> 10` (101,770 weights). Evaluated across 1,000 unseen MNIST test images:
+Architecture: `784 -> 128 (ReLU) -> 10`, which is 101,632 weights plus 138 biases. Evaluated on 1,000 unseen MNIST test images. The baseline is FP64 (`double`).
 
-| Precision | Accuracy | Weight Memory | Inference Time (1k images) | Latency / Image |
-| :--- | :--- | :--- | :--- | :--- |
-| **FP64 (`double`)** | 94.00% | 794.00 KB | 155.82 ms | 0.155 ms |
-| **INT8 (`int8_t`)** | 93.90% | 99.25 KB | 123.30 ms | 0.123 ms |
+| Precision | Accuracy | Weight Memory |
+| :--- | :--- | :--- |
+| **FP64 (`double`)** | 94.00% | 794.00 KB |
+| **INT8 (`int8_t`)** | 93.90% | 99.25 KB |
 
-* **Memory Footprint:** **8.00x reduction** (`694.75 KB` saved on weights).
-* **Accuracy Drop:** **0.10%** (1 image difference out of 1,000).
-* **Latency:** **~20.9% faster** total execution time, including dynamic on-the-fly input and hidden-layer quantization.
+* **Memory footprint:** 8.00x smaller than FP64 (694.75 KB saved). The figure counts the 101,632 weights only, not the 138 biases.
+* **Accuracy drop:** 0.10 percentage points, which is 1 image out of 1,000. At this sample size that is within noise, so the INT8 model is not claimed to be lossless.
+
+### Timing
+
+Total time for the 1,000 images, including dynamic on-the-fly quantization of the input and hidden layer. Timings change from run to run on my machine, so two separate runs are shown:
+
+| Precision | Run 1 | Run 2 |
+| :--- | :--- | :--- |
+| **FP64 (`double`)** | 155.82 ms (0.156 ms / image) | 142.71 ms (0.143 ms / image) |
+| **INT8 (`int8_t`)** | 123.30 ms (0.123 ms / image) | 87.05 ms (0.087 ms / image) |
+| **INT8 faster by** | 20.9% | 39.0% |
+
+INT8 was faster than FP64 in both runs, but the size of the speedup is not stable. Single runs should not be treated as a precise figure.
 
 ## How It Was Built (Step-by-Step)
 
@@ -34,14 +45,16 @@ The project was built incrementally over a week, validated by 21 unit and integr
 ## Quick Start
 
 ### 1. Export MNIST Weights & Test Batch
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install torch torchvision numpy --index-url [https://download.pytorch.org/whl/cpu](https://download.pytorch.org/whl/cpu)
+pip install torch torchvision numpy --index-url https://download.pytorch.org/whl/cpu
 python3 export_mnist.py
 ```
 
 ### 2. Compile & Run Benchmark
+
 ```bash
 g++ -std=c++23 -O3 main.cpp -o app
 ./app
