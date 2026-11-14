@@ -50,13 +50,12 @@ model.fc1.bias.detach().numpy().astype(np.float64).tofile("b1.bin")
 model.fc2.weight.detach().numpy().T.astype(np.float64).tofile("w2.bin")
 model.fc2.bias.detach().numpy().astype(np.float64).tofile("b2.bin")
 
-# 5. Export one test image and print the target label
-test_img, test_label = test_dataset[0] # Usually the digit '7'
-test_img_flat = test_img.view(1, 784).numpy().astype(np.float64)
-test_img_flat.tofile("test_img.bin")
+# 5. Export 1,000 test images and labels for benchmarking
+test_loader = DataLoader(test_dataset, batch_size=1000, shuffle=False)
+images_1k, labels_1k = next(iter(test_loader))
 
-with torch.no_grad():
-    pt_pred = model(test_img).argmax(dim=1).item()
+images_1k.view(1000, 784).numpy().astype(np.float64).tofile("test_images_1k.bin")
+labels_1k.numpy().astype(np.float64).tofile("test_labels_1k.bin")
+images_1k[0].view(1, 784).numpy().astype(np.float64).tofile("test_img.bin")
 
-print(f"Export complete! Generated: w1.bin, b1.bin, w2.bin, b2.bin, test_img.bin")
-print(f"Ground Truth Digit: {test_label} | PyTorch Prediction: {pt_pred}")
+print("Exported 1,000 test images (test_images_1k.bin) and labels (test_labels_1k.bin)!")

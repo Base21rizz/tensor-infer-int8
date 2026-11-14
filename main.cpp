@@ -8,6 +8,10 @@
 #include <fstream>
 #include <string>
 #include <cassert>
+#include <chrono>
+#include <iomanip>
+
+
 class Tensor{  // The actual tensor
 public:
     Tensor(
@@ -305,6 +309,18 @@ struct QuantizedTensor {
     }
 
     return Tensor({M, N}, std::move(result_data));
+}
+
+
+// Forward pass function for 64-bit floating point for benchmark pupose 
+[[nodiscard]] std::size_t forward_pass_fp64( 
+    const Tensor& input,
+    const Tensor& W1, const Tensor& b1,
+    const Tensor& W2, const Tensor& b2) 
+{
+    Tensor hidden = relu(add(matmul(input, W1), b1));
+    Tensor logits = add(matmul(hidden, W2), b2);
+    return argmax(logits);
 }
 
 
@@ -621,6 +637,52 @@ int main(){
     assert(mnist_pred == 7);
     std::cout << "MNIST Inference Success!\n";
 
+
+    // Benchmark suite
+    std::cout << "\n--- Test 21: 1,000-Image MNIST Benchmark (FP64 vs INT8) ---\n";
+    
+    const std::size_t num_samples = 1000;
+    Tensor batch_imgs = load_tensor("test_images_1k.bin", {num_samples, 784});
+    Tensor batch_lbls = load_tensor("test_labels_1k.bin", {num_samples});
+
+    // Slice the flat 1000x784 tensor into 1,000 individual 1x784 image tensors
+    std::vector<Tensor> inputs;
+    inputs.reserve(num_samples);
+    for (std::size_t i = 0; i < num_samples; ++i) {
+        auto start_it = batch_imgs.data().begin() + i * 784;
+        inputs.emplace_back(std::vector<std::size_t>{1, 784}, std::vector<double>(start_it, start_it + 784));
+    }
+
+    // 1. Benchmark FP64
+    std::size_t fp64_correct = 0;
+    auto t0 = std::chrono::high_resolution_clock::now();
+    for (std::size_t i = 0; i < num_samples; ++i) {
+        if (forward_pass_fp64(inputs[i], mnist_w1, mnist_b1, mnist_w2, mnist_b2) == static_cast<std::size_t>(batch_lbls.data()[i])) {
+            fp64_correct++;
+        }
+    }
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double fp64_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+    // 2. Benchmark INT8
+    std::size_t int8_correct = 0;
+    auto t2 = std::chrono::high_resolution_clock::now();
+    for (std::size_t i = 0; i < num_samples; ++i) {
+        if (forward_pass(inputs[i], q_mnist_w1, mnist_b1, q_mnist_w2, mnist_b2) == static_cast<std::size_t>(batch_lbls.data()[i])) {
+            int8_correct++;
+        }
+    }
+    auto t3 = std::chrono::high_resolution_clock::now();
+    double int8_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
+
+    // 3. Calculate Weight Memory Footprint (W1 + W2)
+    double fp64_kb = (mnist_w1.numel() + mnist_w2.numel()) * sizeof(double) / 1024.0;
+    double int8_kb = (q_mnist_w1.data.size() + q_mnist_w2.data.size()) * sizeof(int8_t) / 1024.0;
+
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "FP64 -> Accuracy: " << (fp64_correct / 10.0) << "% | Weight Memory: " << fp64_kb << " KB | Time: " << fp64_ms << " ms\n";
+    std::cout << "INT8 -> Accuracy: " << (int8_correct / 10.0) << "% | Weight Memory: " << int8_kb << " KB | Time: " << int8_ms << " ms\n";
+    std::cout << "Memory Reduction: 8.00x (" << fp64_kb - int8_kb << " KB saved)\n";
 
 
     // without nodiscard just calling t.shape() which is practically useless so we need a warning when we write something like this which is done by nodiscard.
