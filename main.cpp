@@ -308,6 +308,27 @@ struct QuantizedTensor {
 }
 
 
+[[nodiscard]] std::size_t forward_pass(
+    const Tensor& input,
+    const QuantizedTensor& q_W1, const Tensor& b1,
+    const QuantizedTensor& q_W2, const Tensor& b2) 
+{
+    // Layer 1: Input -> Hidden Layer
+    QuantizedTensor q_input = quantize(input);
+    Tensor hidden = matmul_int8(q_input, q_W1);
+    hidden = add(hidden, b1); // add bias 1
+    hidden = relu(hidden); // call relu
+
+    // Layer 2: Hidden Layer -> Output Logits
+    QuantizedTensor q_hidden = quantize(hidden);
+    Tensor logits = matmul_int8(q_hidden, q_W2);
+    logits = add(logits, b2); // add bias 2
+
+    // Return the index of the highest score
+    return argmax(logits);
+}
+
+
 int main(){
 
     std::vector<std::size_t> shape_1 {2,3};
@@ -543,6 +564,40 @@ int main(){
     std::cout << "INT8 Matmul Success! (Exact[0]: " << exact_out.data()[0] 
               << " vs INT8[0]: " << approx_out.data()[0] << ")\n";
 
+
+    // Forward pass test
+    std::cout << "Test 19: Full INT8 Forward Pass\n";
+    
+    // 1x4 Input
+    Tensor net_input({1, 4}, {1.0, 2.0, 3.0, 4.0});
+    
+    // Layer 1: 4x3 Weights and 1x3 Bias
+    Tensor W1({4, 3}, {
+        0.1, 0.2, -0.1,
+        0.4, -0.5, 0.2,
+        -0.3, 0.1, 0.5,
+        0.2, 0.3, -0.4
+    });
+    Tensor b1({1, 3}, {0.1, 0.1, 0.1});
+    
+    // Layer 2: 3x2 Weights and 1x2 Bias ( rigged so index 1 wins )
+    Tensor W2({3, 2}, {
+        -0.5, 1.5,
+        -0.2, 1.2,
+        -0.1, 0.8
+    });
+    Tensor b2({1, 2}, {0.0, 0.5});
+    
+    // Pre-quantize the weights
+    QuantizedTensor q_W1 = quantize(W1);
+    QuantizedTensor q_W2 = quantize(W2);
+    
+    // Run inference
+    std::size_t prediction = forward_pass(net_input, q_W1, b1, q_W2, b2);
+    
+    assert(prediction == 1);
+    std::cout << "Forward Pass Success! Predicted Class: " << prediction << "\n";
+    
 
     // without nodiscard just calling t.shape() which is practically useless so we need a warning when we write something like this which is done by nodiscard.
     auto& shape = t.shape();
